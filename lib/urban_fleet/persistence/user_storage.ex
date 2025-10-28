@@ -11,14 +11,22 @@ defmodule UserStorage do
   Guarda una lista de usuarios en el archivo `users.dat`.
   Cada usuario se escribe en una línea con formato: id|nombre|rol|password_hash|puntaje
   """
-  def save_users(users) when is_list(users) do
-    content =
-      Enum.map(users, fn u ->
-        "#{u.id}|#{u.name}|#{u.role}|#{u.password_hash}|#{u.score}"
-      end)
-      |> Enum.join("\n")
+  def save_users(user_map) do
+    users= load_users()
+    updated = [user_map | Enum.reject(users, &(&1. username ==
+      user_map.username))]
 
-    File.write!(@ruta, content)
+      content = Enum.map_join(updated, "\n", &format_line/1 <> "\n")
+      File.write(@ruta, content)
+    end
+  end
+
+  @doc"""
+  Busca los usuarios por el nombre y el id
+  """
+  def find_user(username, id) do
+    load_users() |>Enum.find(&(&1.username == username))
+    load_users() |>Enum.find(&(&1.id == id))
   end
 
   @doc """
@@ -26,25 +34,32 @@ defmodule UserStorage do
   Si el archivo no existe, devuelve una lista vacía.
   """
   def load_users do
-    if File.exists?(@ruta) do
-      @ruta
-      |> File.read!()
-      |> String.split("\n", trim: true)
-      |> Enum.map(&parse_usuario/1)
-    else
-      []
+    case File.read(@ruta) do
+      {:ok, content} -> content
+      |>String.split("\n", trim: true)
+      |>Enun.map(&parse_line/1)
+      |>Enum.reject(&is_nil/1)
+
+      {:error:, :enoent}->
+        File.mkdir_p!("data")
+        File.write!(@ruta, "")[]
+
+        {:error, _}->[] end
+      end
+
+  defp parse_line(line) do
+    case String.split(line, "|")do
+      [name, role, hash, score]->
+        %{
+          username: name,
+          role: String.to_atom(role),
+          password_hash: hash,
+          score: String.to_integer(score)
+        }
+        _-> nil
+    end
+
+    defp format_line(user) do
+      "#{user.username}|#{user.role}|#{user.password_hash}|#{user.score}"
     end
   end
-
-  defp parse_usuario(line) do
-    [id_str, name, role_str, password_hash, score_str] = String.split(line, "|")
-
-    %User{
-      id: String.to_integer(id_str),
-      name: name,
-      role: String.to_atom(role_str),
-      password_hash: password_hash,
-      score: String.to_integer(score_str)
-    }
-  end
-end
