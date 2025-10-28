@@ -2,25 +2,25 @@ defmodule LocationManager do
 
  alias LocationStorage
 
- def valid_location?(location) when is_binary(location) do
+ def valid_location?(location) do
    locations = LocationStorage.load_locations()
-   if Enum.any?(locations, fn loc -> String.downcase(loc) == String.downcase(location) end) do
-    true
+   if String.downcase(location) in Enum.map(locations, &String.downcase/1) do
+    {:ok, location}
   else
-    IO.puts("Ubicación no válida: #{location}")
-    false
-  end
+    {:error, :invalid_location}end
  end
 
  def list_locations do
-    locations = LocationStorage.load_locations()
+  case LocationStorage.load_locations()do
+    {:ok, []} ->
+      IO.puts("No hay ubicaciones disponibles.")
+      {:ok, locations} ->
+        IO.puts("\n===Ubicaciones disponibles===")
+        Enum.each(locations, fn loc -> IO.puts("    #{loc}") end)
 
-    if locations == [] do
-      IO.puts("No hay ubicaciones registradas.")
-    else
-      IO.puts("Ubicaciones disponibles:")
-      Enum.each(locations, &IO.puts(" - " <> &1))
-    end
+        {:eror, reason}->
+          IO.puts("Error al cargar ubicaciones: #{inspect(reason)}")
+          IO.puts("Contacte al administrador del sistema.")
+        end
   end
-
 end
