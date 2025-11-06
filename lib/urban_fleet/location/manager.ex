@@ -1,26 +1,27 @@
 defmodule LocationManager do
+  alias LocationStorage
 
- alias LocationStorage
+  def valid_location?(location) do
+    locations = LocationStorage.load_locations()
 
- def valid_location?(location) do
-   locations = LocationStorage.load_locations()
-   if String.downcase(location) in Enum.map(locations, &String.downcase/1) do
-    {:ok, location}
-  else
-    {:error, :invalid_location}end
- end
+    exists? =
+      Enum.any?(locations, fn loc ->
+        String.downcase(loc) == String.downcase(location)
+      end)
 
- def list_locations do
-  case LocationStorage.load_locations()do
-    {:ok, []} ->
-      IO.puts("No hay ubicaciones disponibles.")
-      {:ok, locations} ->
-        IO.puts("\n===Ubicaciones disponibles===")
-        Enum.each(locations, fn loc -> IO.puts("    #{loc}") end)
+    if exists?, do: {:ok, location}, else: {:error, :invalid_location}
+  end
 
-        {:eror, reason}->
-          IO.puts("Error al cargar ubicaciones: #{inspect(reason)}")
-          IO.puts("Contacte al administrador del sistema.")
-        end
+  def list_locations do
+    locations = LocationStorage.load_locations()
+
+    if locations == [] do
+      IO.puts("No hay ubicaciones registradas.")
+    else
+      IO.puts("\n=== Ubicaciones Disponibles ===")
+      Enum.each(locations, fn loc -> IO.puts(" - #{loc}") end)
+    end
+
+    :ok
   end
 end

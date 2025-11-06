@@ -21,7 +21,7 @@ defmodule TripManager do
         if u.id == user.id, do: %{u | score: u.score + score}, else: u
       end)
 
-    UserStorage.save_users(updated_users)
+    UserStorage.save_user(updated_users)
     {:ok, score}
   end
 
