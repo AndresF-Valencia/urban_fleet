@@ -19,7 +19,10 @@ defmodule Handler do
     end
   end
 
-  # CONNECT
+  ## ===============================
+  ## COMANDOS DE USUARIO
+  ## ===============================
+
   defp parse_command("connect " <> rest, nil) do
     case String.split(rest, " ") do
       [user, pass] ->
@@ -47,13 +50,11 @@ defmodule Handler do
     end
   end
 
-  # DISCONNECT
   defp parse_command("disconnect", user) when not is_nil(user) do
     IO.puts("Sesión cerrada")
     {:continue, nil}
   end
 
-  # SCORE
   defp parse_command("score", user) when not is_nil(user) do
     case UserManager.get_user_score(user) do
       {:ok, score} -> IO.puts("Tu puntaje: #{score}")
@@ -62,7 +63,6 @@ defmodule Handler do
     {:continue, user}
   end
 
-  # RANKING
   defp parse_command("ranking " <> role, user) do
     role_atom = String.to_atom(role)
     ranking = UserManager.ranking(role_atom)
@@ -76,23 +76,76 @@ defmodule Handler do
     {:continue, user}
   end
 
-  # LOCATIONS
+  ## ===============================
+  ## COMANDOS DE VIAJES
+  ## ===============================
+
+  # CLIENTE solicita un viaje
+  defp parse_command("request_trip " <> rest, %{role: :client} = user) do
+    case String.split(rest, " ") do
+      [origin, dest] ->
+        {:ok, pid} = TripManager.request_trip(user, origin, dest)
+        IO.puts("Solicitud de viaje creada (PID: #{inspect(pid)})")
+        {:continue, user}
+
+      _ ->
+        IO.puts("Uso: request_trip origen destino")
+        {:continue, user}
+    end
+  end
+
+  # CONDUCTOR acepta un viaje
+  defp parse_command("accept_trip " <> id_str, %{role: :driver} = user) do
+    case Integer.parse(id_str) do
+      {id, _} ->
+        case TripManager.accept_trip(id, user) do
+          :ok -> IO.puts("Viaje aceptado")
+          {:error, reason} -> IO.puts("Error: #{inspect(reason)}")
+        end
+
+      _ ->
+        IO.puts("Uso: accept_trip id_viaje")
+    end
+
+    {:continue, user}
+  end
+
+  # CONDUCTOR completa un viaje
+  defp parse_command("complete_trip " <> id_str, %{role: :driver} = user) do
+    case Integer.parse(id_str) do
+      {id, _} ->
+        TripManager.complete_trip(id)
+        IO.puts("Viaje completado exitosamente")
+
+      _ ->
+        IO.puts("Uso: complete_trip id_viaje")
+    end
+
+    {:continue, user}
+  end
+
+  ## ===============================
+  ## OTROS COMANDOS
+  ## ===============================
+
   defp parse_command("locations", user) do
     LocationManager.list_locations()
     {:continue, user}
   end
 
-  # HELP
   defp parse_command("help", user) do
     IO.puts("""
     Comandos:
 
-      connect user pass      - Conectar/registrar
-      disconnect             - Salir
-      score                  - Ver tu puntaje
-      ranking client|driver  - Ver ranking
-      locations              - Ver ubicaciones
-      exit                   - Cerrar programa
+      connect user pass        - Conectar/registrar
+      disconnect               - Salir
+      score                    - Ver tu puntaje
+      ranking client|driver    - Ver ranking
+      request_trip o d         - Cliente crea viaje
+      accept_trip id           - Conductor acepta viaje
+      complete_trip id         - Conductor finaliza viaje
+      locations                - Ver ubicaciones
+      exit                     - Cerrar programa
     """)
     {:continue, user}
   end
