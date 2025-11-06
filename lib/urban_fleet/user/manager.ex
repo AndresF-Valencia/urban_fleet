@@ -1,6 +1,10 @@
 defmodule UserManager do
-
   use GenServer
+
+  alias UserStorage
+  alias User
+
+  # === GEN SERVER API PÚBLICA ===
 
   def start_link(opts \\ []) do
     GenServer.start_link(UserManager, :ok, opts ++ [name: UserManager])
@@ -26,6 +30,8 @@ defmodule UserManager do
     GenServer.call(UserManager, {:ranking, role})
   end
 
+  # === GEN SERVER LOGIC ===
+
   @impl true
   def init(:ok) do
     {:ok, %{connected: MapSet.new()}}
@@ -35,31 +41,36 @@ defmodule UserManager do
   def handle_call({:connect, username, password}, _from, state) do
     user = UserStorage.find_user(username)
 
-    result = case user do
-      nil ->
-        IO.puts("Usuario nuevo. ¿Rol? (client/driver):")
-        role = IO.gets("> ") |> String.trim() |> String.to_atom()
-        new_user = %{
-          username: username,
-          role: role,
-          password_hash: hash_password(password),
-          score: 0
-        }
-        UserStorage.save_user(new_user)
-        {:ok, :registered, new_user}
-      existing ->
-        if verify_password(existing, password) do
-          {:ok, :logged_in, existing}
-        else
-          {:error, :wrong_password}
-        end
-    end
+    result =
+      case user do
+        nil ->
+          IO.puts("Usuario nuevo. ¿Rol? (client/driver):")
+          role = IO.gets("> ") |> String.trim() |> String.to_atom()
 
-    new_state = if match?({:ok, _, _}, result) do
-      %{state | connected: MapSet.put(state.connected, username)}
-    else
-      state
-    end
+          new_user = %{
+            username: username,
+            role: role,
+            password_hash: hash_password(password),
+            score: 0
+          }
+
+          UserStorage.save_user(new_user)
+          {:ok, :registered, new_user}
+
+        existing ->
+          if verify_password(existing, password) do
+            {:ok, :logged_in, existing}
+          else
+            {:error, :wrong_password}
+          end
+      end
+
+    new_state =
+      if match?({:ok, _, _}, result) do
+        %{state | connected: MapSet.put(state.connected, username)}
+      else
+        state
+      end
 
     {:reply, result, new_state}
   end
@@ -83,6 +94,7 @@ defmodule UserManager do
     case UserStorage.find_user(username) do
       nil ->
         {:reply, {:error, :not_found}, state}
+
       user ->
         updated = %{user | score: user.score + points}
         UserStorage.save_user(updated)
@@ -100,17 +112,7 @@ defmodule UserManager do
     {:reply, ranking, state}
   end
 
-  defp hash_password(pwd) do
-    :crypto.hash(:sha256, pwd) |> Base.encode16()
-  end
-
-  defp verify_password(user, pwd) do
-    user.password_hash == hash_password(pwd)
-  end
-
-
-  alias UserStorage
-  alias User
+  # === FUNCIONES EXTRA  ===
 
   @doc """
   Crea y guarda un nuevo usuario si el nombre no existe.
@@ -147,7 +149,7 @@ defmodule UserManager do
         {:error, :usuario_no_encontrado}
 
       user ->
-        if verificar_password(user, password),
+        if verify_password(user, password),
           do: {:ok, user},
           else: {:error, :contraseña_incorrecta}
     end
@@ -168,19 +170,17 @@ defmodule UserManager do
     users
     |> Enum.group_by(& &1.role)
     |> Enum.map(fn {role, users_in_role} ->
-      {
-        role,
-        Enum.sort_by(users_in_role, & &1.score, :desc)
-      }
+      {role, Enum.sort_by(users_in_role, & &1.score, :desc)}
     end)
   end
+
+  # === FUNCIONES PRIVADAS ===
 
   defp generate_id, do: :erlang.unique_integer([:positive])
 
   defp hash_password(password),
     do: :crypto.hash(:sha256, password) |> Base.encode16()
 
-  defp verificar_password(user, password),
+  defp verify_password(user, password),
     do: hash_password(password) == user.password_hash
-    
 end
