@@ -15,19 +15,22 @@ defmodule LocationStorage do
         File.write!(@ruta, "Centro\nNorte\nSur\nEste\nOeste")
         load_locations()
 
-        {:error, reason}->
-          IO.puts("Error leyendo ubicaciones: #{inspect(reason)}") []
-        end
+      {:error, reason} ->
+        IO.puts("Error leyendo ubicaciones: #{inspect(reason)}")
+        []
+    end
   end
 
-  def save_locations(locations) do
+  # Guarda una sola ubicación si no estaba ya
+  def save_location(location) do
     locations = load_locations()
 
-    if Enum.member?(locations, location) do
+    if location in locations do
       {:error, :duplicate}
     else
-      File.write(@ruta, Enum.join(locations ++ [location], "\n")
-      "\n")
-   end
+      new_list = locations ++ [location]
+      File.write!(@ruta, Enum.join(new_list, "\n") <> "\n")
+      {:ok, new_list}
+    end
   end
 end
