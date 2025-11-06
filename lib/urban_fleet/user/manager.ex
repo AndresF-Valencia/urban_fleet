@@ -130,7 +130,7 @@ defmodule UserManager do
           score: 0
         }
 
-        UserStorage.save_users(users ++ [new_user])
+        UserStorage.save_user(users ++ [new_user])
         {:ok, new_user}
 
       _existing ->
