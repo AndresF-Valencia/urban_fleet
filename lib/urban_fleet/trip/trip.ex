@@ -2,30 +2,32 @@ defmodule Trip do
   use GenServer
   alias UserStorage
 
+  ##  API PÚBLICA
 
   # Iniciar un viaje
-  def start_link({client, origin, dest}) do
-    GenServer.start_link(Trip, {client, origin, dest})
+  def start_link({client, origin, destination}) do
+    GenServer.start_link(__MODULE__, {client, origin, destination})
   end
 
-  # Conductor acepta viaje
+  # Conductor acepta el viaje
   def accept(pid, driver) do
     GenServer.call(pid, {:accept, driver})
   end
 
-  # Conductor finaliza viaje
+  # Conductor finaliza el viaje
   def complete(pid) do
     GenServer.cast(pid, :complete)
   end
 
-  # Ver estado de viaje
+  # Consultar el estado actual del viaje
   def state(pid) do
     GenServer.call(pid, :state)
   end
 
+  ##  CALLBACKS DEL SERVIDOR
 
-  def init({client, origin, dest}) do
-    # Timer 20s para expirar si no hay conductor
+  def init({client, origin, destination}) do
+    # Temporizador: expira si nadie acepta en 20 segundos
     Process.send_after(self(), :expire, 20_000)
 
     {:ok,
@@ -33,50 +35,51 @@ defmodule Trip do
         client: client,
         driver: nil,
         origin: origin,
-        destination: dest,
-        status: :waiting
+        destination: destination,
+        status: :pending
       }
     }
   end
 
-  # Conductor acepta viaje si está libre
-  def handle_call({:accept, driver}, _from, %{status: :waiting, driver: nil} = s) do
+  # Aceptar viaje (si está pendiente)
+  def handle_call({:accept, driver}, _from, %{status: :pending, driver: nil} = s) do
     {:reply, {:ok, :accepted}, %{s | driver: driver, status: :accepted}}
   end
 
-  # Si ya tiene conductor
+  # Si ya fue aceptado
   def handle_call({:accept, _}, _from, state) do
     {:reply, {:error, :already_taken}, state}
   end
 
+  # Obtener estado
   def handle_call(:state, _from, state), do: {:reply, state, state}
 
-  # Finalizar viaje -> dar puntajes
+  # Completar viaje
   def handle_cast(:complete, %{client: c, driver: d, status: :accepted} = s) do
-    update_score(c, :complet)
-    update_score(d, :complet)
+    update_score(c, :completed)
+    update_score(d, :completed)
+    IO.puts("✅ Viaje completado por #{d.username}")
     {:stop, :normal, %{s | status: :completed}}
   end
 
-  # Expira sin conductor -> penalizar cliente
-  def handle_info(:expire, %{status: :waiting, client: c} = s) do
+  # Si expira sin conductor → penalizar cliente
+  def handle_info(:expire, %{status: :pending, client: c} = s) do
     update_score(c, :expired)
+    IO.puts("⏰ Viaje expirado para #{c.username}")
     {:stop, :normal, %{s | status: :expired}}
   end
 
-  # Si expira pero ya estaba aceptado, ignorar
+  # Si ya estaba aceptado, ignorar expiración
   def handle_info(:expire, s), do: {:noreply, s}
 
-  ## =========================
-  ##  LOGICA DE PUNTAJE
-  ## =========================
+  ##  LÓGICA DE PUNTAJE
 
   defp update_score(user, result) do
     score =
       case {user.role, result} do
-        {:client, :complet} -> 10
+        {:client, :completed} -> 10
         {:client, :expired} -> -5
-        {:driver, :complet} -> 15
+        {:driver, :completed} -> 15
         _ -> 0
       end
 
@@ -97,6 +100,6 @@ defmodule Trip do
         end
       end)
 
-    UserStorage.save_user(updated)
+    UserStorage.save_users(updated)
   end
 end
