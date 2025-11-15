@@ -7,38 +7,37 @@ defmodule TripManager do
   use DynamicSupervisor
   alias Trip
 
-  # ======================
-  # Supervisor
-  # ======================
+  ## ===============================
+  ##  INICIO Y SUPERVISOR
+  ## ===============================
+
   def start_link(_args) do
     DynamicSupervisor.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
   @impl true
   def init(:ok) do
+    # Estrategia simple: cada viaje es independiente
+    Registry.start_link(keys: :unique, name: TripRegistry)
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  # ======================
-  # API
-  # ======================
+  ## ===============================
+  ##  API PÚBLICA
+  ## ===============================
 
-  @doc """
-  Crea un viaje y devuelve { :ok, id, pid }.
-  """
+  # Cliente solicita un viaje
   def request_trip(client, origin, dest) do
-    {:ok, pid} = DynamicSupervisor.start_child(
-      __MODULE__,
-      {Trip, {client, origin, dest}}
-    )
+    # Inicia un proceso Trip bajo el DynamicSupervisor
+    spec = {Trip, {client, origin, dest}}
+    {:ok, pid} = DynamicSupervisor.start_child(__MODULE__, spec)
 
     id = Trip.state(pid).id
 
     Registry.register(TripRegistry, id, nil)
 
     IO.puts("🚗 Nuevo viaje creado con ID #{id}")
-
-    {:ok, id, pid}
+    {:ok, pid}
   end
 
   @doc """
@@ -46,8 +45,14 @@ defmodule TripManager do
   """
   def accept_trip(id, driver) do
     case Registry.lookup(TripRegistry, id) do
-      [{pid, _}] -> Trip.accept(pid, driver)
-      [] -> {:error, :not_found}
+      [{_pid, pid}] ->
+        case Trip.accept(pid, driver) do
+          {:ok, :accepted} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      [] ->
+        {:error, :not_found}
     end
   end
 
@@ -56,22 +61,33 @@ defmodule TripManager do
   """
   def complete_trip(id) do
     case Registry.lookup(TripRegistry, id) do
-      [{pid, _}] ->
+      [{_pid, pid}] ->
         Trip.complete(pid)
         IO.puts("✅ Viaje #{id} completado")
         :ok
 
-      [] ->
-        {:error, :not_found}
+      {:error, _} = e -> e
     end
   end
 
-  @doc """
-  Obtiene el estado de un viaje por ID.
-  """
+  # Ver estado actual del viaje
   def get_trip_state(id) do
+    case lookup_trip(id) do
+      {:ok, pid} -> Trip.state(pid)
+      {:error, _} = e -> e
+    end
+  end
+
+  # Listar todos los viajes activos
+  def list_trips do
+    Registry.select(TripRegistry, [{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$3"}}]}])
+  end
+
+  ##  PRIVADO
+
+  defp lookup_trip(id) do
     case Registry.lookup(TripRegistry, id) do
-      [{pid, _}] -> Trip.state(pid)
+      [{_pid, pid}] -> Trip.state(pid)
       [] -> {:error, :not_found}
     end
   end
