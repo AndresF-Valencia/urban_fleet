@@ -1,159 +1,227 @@
 defmodule Handler do
+  use GenServer
+
+  alias Auth
+  alias UserManager
+  alias TripManager
+  alias LocationManager
+
+  ## ==========================================
+  ## ============  PUBLIC API  =================
+  ## ==========================================
+
   def start do
     IO.puts("=== Urban Fleet System ===")
-    IO.puts("Escribe 'help' para ver comandos\n")
-    loop(nil)
+    IO.puts("Escribe 'help' para ver comandos.\n")
+    GenServer.start_link(__MODULE__, %{session: nil, active_trip: nil}, name: __MODULE__)
+    loop()
   end
 
-  defp loop(current_user) do
-    prompt =
-      if current_user,
-        do: "#{current_user.username}> ",
-        else: "> "
-
-    input = IO.gets(prompt) |> String.trim()
-
-    case parse_command(input, current_user) do
-      {:continue, new_user} -> loop(new_user)
-      :exit -> IO.puts("Adiós")
-    end
+  ## CLI principal
+  defp loop do
+    input = IO.gets("> ") |> String.trim()
+    GenServer.cast(__MODULE__, {:command, input})
+    loop()
   end
 
-  ## ===============================
-  ## COMANDOS DE USUARIO
-  ## ===============================
+  ## ==========================================
+  ## ============  GEN SERVER  =================
+  ## ==========================================
 
-  defp parse_command("connect " <> rest, nil) do
-    case String.split(rest, " ") do
-      [user, pass] ->
-        case UserManager.connect(user, pass) do
-          {:ok, :registered, u} ->
-            IO.puts("Registrado exitosamente")
-            {:continue, u}
+  @impl true
+  def init(state), do: {:ok, state}
 
-          {:ok, :logged_in, u} ->
-            IO.puts("Bienvenido de nuevo")
-            {:continue, u}
+  @impl true
+  def handle_cast({:command, input}, state) do
+    case parse(input) do
+      {:ok, {:register, u, r, p}} ->
+        reply(Auth.register(u, r, p))
+        {:noreply, state}
 
-          {:error, :wrong_password} ->
-            IO.puts("Contraseña incorrecta")
-            {:continue, nil}
+      {:ok, {:login, u, p}} ->
+        case Auth.login(u, p) do
+          {:ok, :logged_in, user} ->
+            IO.puts("Bienvenido #{user.username} (#{user.role})")
+            {:noreply, %{state | session: user}}
 
-          _ ->
-            IO.puts("Error: No se pudo iniciar sesión")
-            {:continue, nil}
+          err ->
+            reply(err)
+            {:noreply, state}
         end
 
-      _ ->
-        IO.puts("Uso: connect username password")
-        {:continue, nil}
-    end
-  end
+      {:ok, :logout} ->
+        IO.puts("Sesión cerrada.")
+        {:noreply, %{state | session: nil, active_trip: nil}}
 
-  defp parse_command("disconnect", user) when not is_nil(user) do
-    IO.puts("Sesión cerrada")
-    {:continue, nil}
-  end
+      {:ok, :whoami} ->
+        case state.session do
+          nil -> IO.puts("No has iniciado sesión.")
+          user -> IO.puts("Usuario: #{user.username} (#{user.role})")
+        end
+        {:noreply, state}
 
-  defp parse_command("score", user) when not is_nil(user) do
-    case UserManager.get_user_score(user) do
-      {:ok, score} -> IO.puts("Tu puntaje: #{score}")
-      _ -> IO.puts("Error obteniendo puntaje")
-    end
-    {:continue, user}
-  end
+      ## ========================= CLIENT =========================
 
-  defp parse_command("ranking " <> role, user) do
-    role_atom = String.to_atom(role)
-    ranking = UserManager.ranking(role_atom)
+      {:ok, {:client_request, origin, dest}} ->
+        case state.session do
+          %{role: :client, username: u} ->
+            with {:ok, _, _} <- LocationManager.valid_location?(origin),
+                 {:ok, _, _} <- LocationManager.valid_location?(dest),
+                 {:ok, trip_id, pid} <- TripManager.request_trip(u, origin, dest)
+            do
+              IO.puts("🚗 Viaje creado con ID #{trip_id}")
 
-    IO.puts("\n--- Ranking #{role} ---")
-    Enum.with_index(ranking, 1)
-    |> Enum.each(fn {u, i} ->
-      IO.puts("#{i}. #{u.username}: #{u.score} pts")
-    end)
+              {:noreply, %{state | active_trip: trip_id}}
+            else
+              {:error, :invalid_location} ->
+                IO.puts("❌ Ubicación inválida.")
+                {:noreply, state}
+            end
 
-    {:continue, user}
-  end
-
-  ## ===============================
-  ## COMANDOS DE VIAJES
-  ## ===============================
-
-  # CLIENTE solicita un viaje
-  defp parse_command("request_trip " <> rest, %{role: :client} = user) do
-    case String.split(rest, " ") do
-      [origin, dest] ->
-        {:ok, pid} = TripManager.request_trip(user, origin, dest)
-        IO.puts("Solicitud de viaje creada (PID: #{inspect(pid)})")
-        {:continue, user}
-
-      _ ->
-        IO.puts("Uso: request_trip origen destino")
-        {:continue, user}
-    end
-  end
-
-  # CONDUCTOR acepta un viaje
-  defp parse_command("accept_trip " <> id_str, %{role: :driver} = user) do
-    case Integer.parse(id_str) do
-      {id, _} ->
-        case TripManager.accept_trip(id, user) do
-          :ok -> IO.puts("Viaje aceptado")
-          {:error, reason} -> IO.puts("Error: #{inspect(reason)}")
+          _ -> no_perm(:client); {:noreply, state}
         end
 
-      _ ->
-        IO.puts("Uso: accept_trip id_viaje")
+      {:ok, :client_trip_status} ->
+        case {state.session, state.active_trip} do
+          {nil, _} ->
+            IO.puts("Debes iniciar sesión.")
+            {:noreply, state}
+
+          {%{role: :client}, nil} ->
+            IO.puts("No tienes viajes activos.")
+            {:noreply, state}
+
+          {%{role: :client}, id} ->
+            case TripManager.get_trip_state(id) do
+              {:error, :not_found} ->
+                IO.puts("Ese viaje ya no existe.")
+                {:noreply, %{state | active_trip: nil}}
+
+              state_info ->
+                IO.inspect(state_info, label: "Estado actual del viaje")
+                {:noreply, state}
+            end
+
+          _ -> no_perm(:client); {:noreply, state}
+        end
+
+      ## ======================= DRIVER ==========================
+
+      {:ok, :driver_pending} ->
+        if driver?(state) do
+          show_pending()
+          {:noreply, state}
+        else
+          no_perm(:driver); {:noreply, state}
+        end
+
+      {:ok, {:driver_accept, id}} ->
+        if driver?(state) do
+          reply(TripManager.accept_trip(id, state.session.username))
+          {:noreply, state}
+        else
+          no_perm(:driver); {:noreply, state}
+        end
+
+      {:ok, {:driver_complete, id}} ->
+        if driver?(state) do
+          reply(TripManager.complete_trip(id))
+          {:noreply, state}
+        else
+          no_perm(:driver); {:noreply, state}
+        end
+
+      ## ========================= OTROS =========================
+
+      {:error, :unknown} ->
+        IO.puts("Comando no reconocido. Escribe 'help'.")
+        {:noreply, state}
     end
-
-    {:continue, user}
   end
 
-  # CONDUCTOR completa un viaje
-  defp parse_command("complete_trip " <> id_str, %{role: :driver} = user) do
-    case Integer.parse(id_str) do
-      {id, _} ->
-        TripManager.complete_trip(id)
-        IO.puts("Viaje completado exitosamente")
+  ## ==========================================
+  ## ============  PARSER CLI  =================
+  ## ==========================================
 
-      _ ->
-        IO.puts("Uso: complete_trip id_viaje")
+  defp parse("help"), do: help()
+
+  defp parse("logout"), do: {:ok, :logout}
+  defp parse("whoami"), do: {:ok, :whoami}
+
+  # Registro
+  defp parse("register " <> rest) do
+    case String.split(rest, " ") do
+      [u, role, p] ->
+        {:ok, {:register, u, String.to_atom(role), p}}
+      _ -> {:error, :unknown}
     end
-
-    {:continue, user}
   end
 
-  ## ===============================
-  ## OTROS COMANDOS
-  ## ===============================
-
-  defp parse_command("locations", user) do
-    LocationManager.list_locations()
-    {:continue, user}
+  # Login
+  defp parse("login " <> rest) do
+    case String.split(rest, " ") do
+      [u, p] -> {:ok, {:login, u, p}}
+      _ -> {:error, :unknown}
+    end
   end
 
-  defp parse_command("help", user) do
+  ## CLIENTE
+  defp parse("client request_trip " <> rest) do
+    case String.split(rest, " ") do
+      [o, d] -> {:ok, {:client_request, o, d}}
+      _ -> {:error, :unknown}
+    end
+  end
+
+  defp parse("client trip_status"), do: {:ok, :client_trip_status}
+
+  ## DRIVER
+  defp parse("driver pending_trips"), do: {:ok, :driver_pending}
+
+  defp parse("driver accept " <> id),
+    do: {:ok, {:driver_accept, String.to_integer(id)}}
+
+  defp parse("driver complete " <> id),
+    do: {:ok, {:driver_complete, String.to_integer(id)}}
+
+  defp parse(_), do: {:error, :unknown}
+
+  ## ==========================================
+  ## ============ HELP Y UTILIDADES ===========
+  ## ==========================================
+
+  defp help do
     IO.puts("""
-    Comandos:
+    === COMANDOS DISPONIBLES ===
 
-      connect user pass        - Conectar/registrar
-      disconnect               - Salir
-      score                    - Ver tu puntaje
-      ranking client|driver    - Ver ranking
-      request_trip o d         - Cliente crea viaje
-      accept_trip id           - Conductor acepta viaje
-      complete_trip id         - Conductor finaliza viaje
-      locations                - Ver ubicaciones
-      exit                     - Cerrar programa
+    >> USUARIO
+    register <username> <client|driver> <password>
+    login <username> <password>
+    logout
+    whoami
+
+    >> CLIENTE
+    client request_trip <origin> <dest>
+    client trip_status
+
+    >> DRIVER
+    driver pending_trips
+    driver accept <trip_id>
+    driver complete <trip_id>
     """)
-    {:continue, user}
+    {:ok, :help}
   end
 
-  defp parse_command("exit", _user), do: :exit
+  defp driver?(state),
+    do: state.session != nil and state.session.role == :driver
 
-  defp parse_command(_, user) do
-    IO.puts("Comando desconocido. Escribe 'help'")
-    {:continue, user}
+  defp no_perm(role),
+    do: IO.puts("❌ Debes ser #{role} para usar este comando.")
+
+  defp reply(resp), do: IO.inspect(resp, label: "Respuesta")
+
+  defp show_pending do
+    IO.puts("=== Viajes Pendientes ===")
+    IO.puts("Usa 'driver accept <id>' para aceptar uno.")
   end
 end

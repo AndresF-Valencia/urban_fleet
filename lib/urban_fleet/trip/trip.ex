@@ -1,102 +1,94 @@
 defmodule Trip do
   use GenServer
-  alias UserStorage
 
+  @moduledoc """
+  Representa un viaje dentro del sistema.
+  Controla su estado, conductor asignado y notificaciones.
+  """
 
-  # Iniciar un viaje
+  # =============================
+  #   API PÚBLICA
+  # =============================
+
   def start_link({client, origin, dest}) do
-    GenServer.start_link(Trip, {client, origin, dest})
+    GenServer.start_link(__MODULE__, {client, origin, dest})
   end
 
-  # Conductor acepta viaje
-  def accept(pid, driver) do
-    GenServer.call(pid, {:accept, driver})
-  end
+  def state(pid), do: GenServer.call(pid, :get_state)
 
-  # Conductor finaliza viaje
-  def complete(pid) do
-    GenServer.cast(pid, :complete)
-  end
+  def accept(pid, driver), do: GenServer.call(pid, {:accept, driver})
 
-  # Ver estado de viaje
-  def state(pid) do
-    GenServer.call(pid, :state)
-  end
+  def complete(pid), do: GenServer.call(pid, :complete)
 
+  # =============================
+  #   ESTADO INICIAL
+  # =============================
 
+  @impl true
   def init({client, origin, dest}) do
-    # Timer 20s para expirar si no hay conductor
-    Process.send_after(self(), :expire, 20_000)
+    trip_id = System.unique_integer([:positive])
 
     {:ok,
       %{
+        id: trip_id,
         client: client,
         driver: nil,
         origin: origin,
         destination: dest,
-        status: :waiting
-      }
+        status: :waiting_driver,
+        inserted_at: now(),
+        accepted_at: nil,
+        completed_at: nil
+      }}
+  end
+
+  # =============================
+  #   EVENTOS PRINCIPALES
+  # =============================
+
+  @impl true
+  def handle_call(:get_state, _from, state) do
+    {:reply, state, state}
+  end
+
+  @impl true
+  def handle_call({:accept, driver}, _from, %{status: :waiting_driver} = state) do
+    new_state = %{
+      state
+      | status: :accepted,
+        driver: driver,
+        accepted_at: now()
     }
+
+    {:reply, {:ok, :accepted}, new_state}
   end
 
-  # Conductor acepta viaje si está libre
-  def handle_call({:accept, driver}, _from, %{status: :waiting, driver: nil} = s) do
-    {:reply, {:ok, :accepted}, %{s | driver: driver, status: :accepted}}
-  end
-
-  # Si ya tiene conductor
-  def handle_call({:accept, _}, _from, state) do
+  def handle_call({:accept, _driver}, _from, state) do
     {:reply, {:error, :already_taken}, state}
   end
 
-  def handle_call(:state, _from, state), do: {:reply, state, state}
+  @impl true
+  def handle_call(:complete, _from, %{status: :accepted} = state) do
+    new_state = %{
+      state
+      | status: :completed,
+        completed_at: now()
+    }
 
-  # Finalizar viaje -> dar puntajes
-  def handle_cast(:complete, %{client: c, driver: d, status: :accepted} = s) do
-    update_score(c, :complet)
-    update_score(d, :complet)
-    {:stop, :normal, %{s | status: :completed}}
+    {:reply, {:ok, :completed}, new_state}
   end
 
-  # Expira sin conductor -> penalizar cliente
-  def handle_info(:expire, %{status: :waiting, client: c} = s) do
-    update_score(c, :expired)
-    {:stop, :normal, %{s | status: :expired}}
+  def handle_call(:complete, _from, %{status: :waiting_driver} = state) do
+    {:reply, {:error, :not_accepted_yet}, state}
   end
 
-  # Si expira pero ya estaba aceptado, ignorar
-  def handle_info(:expire, s), do: {:noreply, s}
-
-  ## =========================
-  ##  LOGICA DE PUNTAJE
-  ## =========================
-
-  defp update_score(user, result) do
-    score =
-      case {user.role, result} do
-        {:client, :complet} -> 10
-        {:client, :expired} -> -5
-        {:driver, :complet} -> 15
-        _ -> 0
-      end
-
-    apply_score(user.username, score)
+  def handle_call(:complete, _from, %{status: :completed} = state) do
+    {:reply, {:error, :already_completed}, state}
   end
 
-  defp apply_score(_username, 0), do: :ok
+  # =============================
+  #   UTILIDADES PRIVADAS
+  # =============================
 
-  defp apply_score(username, score) do
-    users = UserStorage.load_users()
-
-    updated =
-      Enum.map(users, fn u ->
-        if u.username == username do
-          %{u | score: u.score + score}
-        else
-          u
-        end
-      end)
-
-    UserStorage.save_user(updated)
-  end
+  defp now, do: DateTime.utc_now() |> DateTime.to_iso8601()
 end

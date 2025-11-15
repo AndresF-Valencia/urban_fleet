@@ -1,6 +1,12 @@
 defmodule User do
   @moduledoc """
-  Representa a un usuario del sistema con su información básica y rol asignado.
+  Representa a un usuario del sistema.
   """
-  defstruct [:id,:name,:role, :password_hash, :score]
+
+  defstruct [
+    :name,        # Identificador único
+    :role,            # :client o :driver
+    :password_hash,   # Hash SHA256
+    score: 0          # Puntuación inicial
+  ]
 end

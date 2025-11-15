@@ -1,84 +1,93 @@
 defmodule UserManager do
   use GenServer
 
+  alias Auth
   alias UserStorage
-  alias User
 
-  # === GEN SERVER API PÚBLICA ===
+  # ===============================
+  #  API PÚBLICA
+  # ===============================
 
   def start_link(opts \\ []) do
-    GenServer.start_link(UserManager, :ok, opts ++ [name: UserManager])
+    GenServer.start_link(__MODULE__, :ok, opts ++ [name: __MODULE__])
   end
 
+  # LOGIN
   def connect(username, password) do
-    GenServer.call(UserManager, {:connect, username, password})
+    GenServer.call(__MODULE__, {:connect, username, password})
   end
 
+  # LOGOUT
   def disconnect(username) do
-    GenServer.call(UserManager, {:disconnect, username})
+    GenServer.call(__MODULE__, {:disconnect, username})
   end
 
+  # OBTENER SCORE DEL USUARIO
   def get_user_score(username) do
-    GenServer.call(UserManager, {:get_score, username})
+    GenServer.call(__MODULE__, {:get_score, username})
   end
 
+  # MODIFICAR SCORE
   def update_score(username, points) do
-    GenServer.call(UserManager, {:update_score, username, points})
+    GenServer.call(__MODULE__, {:update_score, username, points})
   end
 
+  # RANKING POR ROL
   def ranking(role) when role in [:client, :driver] do
-    GenServer.call(UserManager, {:ranking, role})
+    GenServer.call(__MODULE__, {:ranking, role})
   end
 
-  # === GEN SERVER LOGIC ===
-
+  # ===============================
+  # ESTADO DEL SERVIDOR
+  # ===============================
   @impl true
   def init(:ok) do
     {:ok, %{connected: MapSet.new()}}
   end
 
+  # ===============================
+  # HANDLERS
+  # ===============================
+
   @impl true
   def handle_call({:connect, username, password}, _from, state) do
-    user = UserStorage.find_user(username)
+    response =
+      case Auth.login(username, password) do
+        {:ok, :logged_in, user} ->
+          {:ok, :logged_in, user}
 
-    result =
-      case user do
-        nil ->
-          IO.puts("Usuario nuevo. ¿Rol? (client/driver):")
-          role = IO.gets("> ") |> String.trim() |> String.to_atom()
+        {:error, :not_found} ->
+          # Si el usuario no existe: se registra automáticamente
+          IO.puts("Usuario nuevo. Escribe rol (client/driver):")
+          role =
+            IO.gets("> ")
+            |> String.trim()
+            |> String.to_atom()
 
-          new_user = %{
-            username: username,
-            role: role,
-            password_hash: hash_password(password),
-            score: 0
-          }
+          case Auth.register(username, role, password) do
+            {:ok, :registered, user} ->
+              {:ok, :registered, user}
 
-          UserStorage.save_user(new_user)
-          {:ok, :registered, new_user}
-
-        existing ->
-          if verify_password(existing, password) do
-            {:ok, :logged_in, existing}
-          else
-            {:error, :wrong_password}
+            error ->
+              error
           end
+
+        error ->
+          error
       end
 
     new_state =
-      if match?({:ok, _, _}, result) do
-        %{state | connected: MapSet.put(state.connected, username)}
-      else
-        state
+      case response do
+        {:ok, _, user} -> %{state | connected: MapSet.put(state.connected, user.username)}
+        _ -> state
       end
 
-    {:reply, result, new_state}
+    {:reply, response, new_state}
   end
 
   @impl true
   def handle_call({:disconnect, username}, _from, state) do
-    new_state = %{state | connected: MapSet.delete(state.connected, username)}
-    {:reply, :ok, new_state}
+    {:reply, :ok, %{state | connected: MapSet.delete(state.connected, username)}}
   end
 
   @impl true
@@ -111,76 +120,4 @@ defmodule UserManager do
 
     {:reply, ranking, state}
   end
-
-  # === FUNCIONES EXTRA  ===
-
-  @doc """
-  Crea y guarda un nuevo usuario si el nombre no existe.
-  """
-  def register_user(name, role, password) do
-    users = UserStorage.load_users()
-
-    case Enum.find(users, &(&1.name == name)) do
-      nil ->
-        new_user = %User{
-          id: generate_id(),
-          name: name,
-          role: role,
-          password_hash: hash_password(password),
-          score: 0
-        }
-
-        UserStorage.save_user(users ++ [new_user])
-        {:ok, new_user}
-
-      _existing ->
-        {:error, :usuario_ya_existente}
-    end
-  end
-
-  @doc """
-  Inicia sesión verificando el nombre y la contraseña de un usuario.
-  """
-  def login(name, password) do
-    users = UserStorage.load_users()
-
-    case Enum.find(users, &(&1.name == name)) do
-      nil ->
-        {:error, :usuario_no_encontrado}
-
-      user ->
-        if verify_password(user, password),
-          do: {:ok, user},
-          else: {:error, :contraseña_incorrecta}
-    end
-  end
-
-  def get_score_by_id(id) do
-    users = UserStorage.load_users()
-
-    case Enum.find(users, &(&1.id == id)) do
-      nil -> {:error, :usuario_no_encontrado}
-      user -> {:ok, user.score}
-    end
-  end
-
-  def ranking do
-    users = UserStorage.load_users()
-
-    users
-    |> Enum.group_by(& &1.role)
-    |> Enum.map(fn {role, users_in_role} ->
-      {role, Enum.sort_by(users_in_role, & &1.score, :desc)}
-    end)
-  end
-
-  # === FUNCIONES PRIVADAS ===
-
-  defp generate_id, do: :erlang.unique_integer([:positive])
-
-  defp hash_password(password),
-    do: :crypto.hash(:sha256, password) |> Base.encode16()
-
-  defp verify_password(user, password),
-    do: hash_password(password) == user.password_hash
 end
