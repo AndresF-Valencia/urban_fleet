@@ -18,7 +18,7 @@ defmodule Trip do
   # =======================
   # INIT
   # =======================
-  def init({client, origin, dest}) do
+  def init({%User{} = client, origin, dest}) do
     # 20 segundos para expirar si no hay conductor
     Process.send_after(self(), :expire, 20_000)
 
@@ -35,7 +35,7 @@ defmodule Trip do
     }
 
     # Registrarse en el Registry con la clave trip_id
-    Registry.register(TripRegistry, trip_id, nil)
+    Registry.register(:trip_registry, trip_id, nil)
 
     {:ok, state}
   end

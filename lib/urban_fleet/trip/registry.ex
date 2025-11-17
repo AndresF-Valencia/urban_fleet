@@ -8,7 +8,7 @@ defmodule TripRegistry do
   @impl true
   def init(:ok) do
     children = [
-      {Registry, keys: :unique, name: TripRegistry}
+      {Registry, keys: :unique, name: :trip_registry}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

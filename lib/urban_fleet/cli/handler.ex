@@ -34,6 +34,9 @@ defmodule Handler do
   @impl true
   def handle_cast({:command, input}, state) do
     case parse(input) do
+      {:ok, :help} ->
+        {:noreply, state}
+
       {:ok, {:register, u, r, p}} ->
         reply(Auth.register(u, r, p))
         {:noreply, state}
@@ -69,10 +72,10 @@ defmodule Handler do
 
       {:ok, {:client_request, origin, dest}} ->
         case state.session do
-          %{role: :client, username: u} ->
+          %{role: :client, username: _u} ->
             with {:ok, _origin_loc} <- LocationManager.valid_location?(origin),
                  {:ok, _dest_loc} <- LocationManager.valid_location?(dest),
-                 {:ok, trip_id, _pid} <- TripManager.request_trip(u, origin, dest) do
+                 {:ok, trip_id, _pid} <- TripManager.request_trip(state.session, origin, dest) do
               IO.puts("🚗 Viaje creado con ID #{trip_id}")
               {:noreply, %{state | active_trip: trip_id}}
             else
@@ -179,11 +182,15 @@ defmodule Handler do
 
   ## CLIENTE
   defp parse("client request_trip " <> rest) do
-    case String.split(rest, " ") do
-      [o, d] -> {:ok, {:client_request, o, d}}
-      _ -> {:error, :unknown}
-    end
+  case Regex.scan(~r/"([^"]+)"/, rest) do
+    [[_, origin], [_, dest]] ->
+      {:ok, {:client_request, origin, dest}}
+
+    _ ->
+      {:error, :unknown}
   end
+end
+
 
   defp parse("client trip_status"), do: {:ok, :client_trip_status}
 

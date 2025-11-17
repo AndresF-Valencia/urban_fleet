@@ -6,10 +6,12 @@ defmodule UrbanFleet.Application do
       TripRegistry,
       {DynamicSupervisor, name: TripSupervisor, strategy: :one_for_one},
       TripManager,
-      UserManager
+      UserManager,
+      {Task, fn -> Handler.start() end}
     ]
 
     opts = [strategy: :one_for_one, name: UrbanFleet.Supervisor]
+
     Supervisor.start_link(children, opts)
   end
 end
