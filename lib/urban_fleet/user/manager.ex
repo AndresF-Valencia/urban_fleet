@@ -5,50 +5,66 @@ defmodule UserManager do
   alias UserStorage
   alias User
 
-  # ===============================
-  # API PÚBLICA
-  # ===============================
-
+  @doc """
+  Inicia el UserManager.
+  """
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, :ok, opts ++ [name: __MODULE__])
   end
 
-  # Intenta login; si no existe devuelve {:error, :not_found}
+  @doc """
+  Conecta un usuario mediante login.
+  """
   def connect(username, password) do
     GenServer.call(__MODULE__, {:connect, username, password})
   end
 
+  @doc """
+  Registra un nuevo usuario.
+  """
   def register(username, role, password) do
     GenServer.call(__MODULE__, {:register, username, role, password})
   end
 
+  @doc """
+  Desconecta un usuario.
+  """
   def disconnect(username) do
     GenServer.call(__MODULE__, {:disconnect, username})
   end
 
+  @doc """
+  Obtiene el puntaje de un usuario.
+  """
   def get_user_score(username) do
     GenServer.call(__MODULE__, {:get_score, username})
   end
 
+  @doc """
+  Actualiza el puntaje de un usuario.
+  """
   def update_score(username, delta) do
     GenServer.call(__MODULE__, {:update_score, username, delta})
   end
 
+  @doc """
+  Obtiene el ranking de usuarios por rol.
+  """
   def ranking(role) when role in [:client, :driver] do
     GenServer.call(__MODULE__, {:ranking, role})
   end
 
-  # ===============================
-  # ESTADO DEL SERVIDOR
-  # ===============================
+  @doc """
+  Inicializa el estado del servidor.
+  """
   @impl true
   def init(:ok) do
     {:ok, %{connected: MapSet.new()}}
   end
 
-  # ===============================
-  # HANDLERS
-  # ===============================
+  @doc """
+  Maneja la conexión de un usuario mediante login.
+  """
   @impl true
   def handle_call({:connect, username, password}, _from, state) do
     case Auth.login(username, password) do
@@ -65,6 +81,9 @@ defmodule UserManager do
     end
   end
 
+  @doc """
+  Registra un usuario y lo conecta automáticamente.
+  """
   @impl true
   def handle_call({:register, username, role, password}, _from, state) do
     case Auth.register(username, role, password) do
@@ -77,11 +96,17 @@ defmodule UserManager do
     end
   end
 
+  @doc """
+  Desconecta un usuario del servidor.
+  """
   @impl true
   def handle_call({:disconnect, username}, _from, state) do
     {:reply, :ok, %{state | connected: MapSet.delete(state.connected, username)}}
   end
 
+  @doc """
+  Obtiene el puntaje de un usuario.
+  """
   @impl true
   def handle_call({:get_score, username}, _from, state) do
     case UserStorage.find_user(username) do
@@ -90,6 +115,9 @@ defmodule UserManager do
     end
   end
 
+  @doc """
+  Actualiza el puntaje de un usuario.
+  """
   @impl true
   def handle_call({:update_score, username, delta}, _from, state) do
     case UserStorage.find_user(username) do
@@ -103,6 +131,9 @@ defmodule UserManager do
     end
   end
 
+  @doc """
+  Devuelve el ranking de usuarios filtrado por rol.
+  """
   @impl true
   def handle_call({:ranking, role}, _from, state) do
     ranking =

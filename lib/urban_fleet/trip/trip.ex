@@ -4,20 +4,31 @@ defmodule Trip do
   alias UserManager
   alias ResultLogger
 
-  # =======================
-  # API
-  # =======================
+  @doc """
+  Inicia el GenServer con los datos del viaje.
+  """
   def start_link({client, origin, dest}) do
     GenServer.start_link(__MODULE__, {client, origin, dest})
   end
 
+  @doc """
+  Acepta el viaje con el conductor dado.
+  """
   def accept(pid, driver), do: GenServer.call(pid, {:accept, driver})
+
+  @doc """
+  Marca el viaje como completado.
+  """
   def complete(pid), do: GenServer.cast(pid, :complete)
+
+  @doc """
+  Retorna el estado actual del viaje.
+  """
   def state(pid), do: GenServer.call(pid, :get_state)
 
-  # =======================
-  # INIT
-  # =======================
+  @doc """
+  Inicializa el estado del viaje y programa su expiración.
+  """
   def init({%User{} = client, origin, dest}) do
     # 20 segundos para expirar si no hay conductor
     Process.send_after(self(), :expire, 20_000)
@@ -40,23 +51,29 @@ defmodule Trip do
     {:ok, state}
   end
 
-  # =======================
-  # CALLS
-  # =======================
+  @doc """
+  Acepta el viaje si está disponible.
+  """
   def handle_call({:accept, driver}, _from, %{status: :waiting, driver: nil} = s) do
     new_state = %{s | driver: driver, status: :accepted, accepted_at: DateTime.utc_now()}
     {:reply, {:ok, :accepted}, new_state}
   end
 
+  @doc """
+  Retorna error si el viaje ya fue aceptado.
+  """
   def handle_call({:accept, _}, _from, state) do
     {:reply, {:error, :already_taken}, state}
   end
 
+  @doc """
+  Devuelve el estado actual del viaje.
+  """
   def handle_call(:get_state, _from, state), do: {:reply, state, state}
 
-  # =======================
-  # CASTS
-  # =======================
+  @doc """
+  Completa el viaje y actualiza puntajes y registro.
+  """
   def handle_cast(:complete, %{client: c, driver: d, status: :accepted} = s) do
     # Delegar el update de puntajes al UserManager
     UserManager.update_score(c.username, 10)
@@ -75,9 +92,9 @@ defmodule Trip do
     {:stop, :normal, %{s | status: :completed, completed_at: DateTime.utc_now()}}
   end
 
-  # =======================
-  # INFO (expire)
-  # =======================
+  @doc """
+  Expira el viaje si sigue en espera.
+  """
   def handle_info(:expire, %{status: :waiting, client: c} = s) do
     UserManager.update_score(c.username, -5)
 
@@ -93,8 +110,13 @@ defmodule Trip do
     {:stop, :normal, %{s | status: :expired}}
   end
 
+  @doc """
+  Ignora la expiración si el viaje ya cambió de estado.
+  """
   def handle_info(:expire, s), do: {:noreply, s}
 
-  # catch all terminate (optional)
+  @doc """
+  Operación de cierre del GenServer.
+  """
   def terminate(_reason, _state), do: :ok
 end

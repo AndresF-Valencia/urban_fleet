@@ -3,9 +3,9 @@ defmodule UserStorage do
 
   alias User
 
-  # ===============================
-  # Cargar todos los usuarios
-  # ===============================
+  @doc """
+  Carga los usuarios almacenados.
+  """
   def load_users do
     ensure_data_dir()
 
@@ -21,17 +21,17 @@ defmodule UserStorage do
     end
   end
 
-  # ===============================
-  # Buscar usuario por username
-  # ===============================
+  @doc """
+  Busca un usuario por nombre.
+  """
   def find_user(username) when is_binary(username) do
     load_users()
     |> Enum.find(&(&1.username == username))
   end
 
-  # ===============================
-  # Guardar o actualizar un usuario (solo un user)
-  # ===============================
+  @doc """
+  Guarda o actualiza un usuario.
+  """
   def save_user(%User{} = user) do
     users =
       load_users()
@@ -42,9 +42,9 @@ defmodule UserStorage do
     save_users(new_list)
   end
 
-  # ===============================
-  # Guardar lista completa (sobrescribe)
-  # ===============================
+  @doc """
+  Guarda la lista completa de usuarios.
+  """
   def save_users(users) when is_list(users) do
     ensure_data_dir()
 
@@ -57,15 +57,16 @@ defmodule UserStorage do
     :ok
   end
 
-  # ===============================
-  # FORMATO DEL ARCHIVO
-  # ===============================
-
-  # username|role|password_hash|score
+  @doc """
+  Formatea un usuario para guardarlo en archivo.
+  """
   defp format_line(%User{username: username, role: role, password_hash: hash, score: score}) do
     "#{username}|#{role}|#{hash}|#{score}"
   end
 
+  @doc """
+  Convierte una línea del archivo en un struct User.
+  """
   defp parse_line(line) do
     case String.split(line, "|") do
       [username, role, hash, score] ->
@@ -80,7 +81,10 @@ defmodule UserStorage do
         nil
     end
   end
-
+  
+  @doc """
+  Asegura que el directorio y archivo de datos existan.
+  """
   defp ensure_data_dir do
     File.mkdir_p!("data")
     if not File.exists?(@ruta), do: File.write!(@ruta, "")

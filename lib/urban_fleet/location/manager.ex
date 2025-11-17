@@ -1,6 +1,9 @@
 defmodule LocationManager do
   alias LocationStorage
 
+  @doc """
+  Verifica si una ubicación existe.
+  """
   def valid_location?(location) do
     locations = LocationStorage.load_locations()
 
@@ -11,7 +14,10 @@ defmodule LocationManager do
 
     if exists?, do: {:ok, location}, else: {:error, :invalid_location}
   end
-
+  
+  @doc """
+  Muestra la lista de ubicaciones registradas.
+  """
   def list_locations do
     locations = LocationStorage.load_locations()
 

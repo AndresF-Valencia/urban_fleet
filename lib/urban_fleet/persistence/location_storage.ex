@@ -1,6 +1,9 @@
 defmodule LocationStorage do
   @ruta "data/locations.dat"
 
+  @doc """
+  Carga las ubicaciones desde el archivo correspondiente.
+  """
   def load_locations do
     case File.read(@ruta) do
       {:ok, content} ->
@@ -21,7 +24,9 @@ defmodule LocationStorage do
     end
   end
 
-  # Guarda una sola ubicación si no estaba ya
+  @doc """
+  Guarda una nueva ubicación si no existe.
+  """
   def save_location(location) do
     locations = load_locations()
 

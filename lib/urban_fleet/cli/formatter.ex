@@ -1,6 +1,8 @@
 defmodule Formatter do
 
-  # Crear un viaje base cuando el cliente lo solicita
+  @doc """
+  Construye los datos iniciales de un viaje.
+  """
   def format_trip_data(client, origin, destination) do
     %{
       client: client.username,
@@ -11,13 +13,18 @@ defmodule Formatter do
     }
   end
 
-  # Cuando el conductor acepta
+  @doc """
+  Asigna un conductor a un viaje.
+  """
   def apply_driver(trip, driver) do
     Map.put(trip, :driver, driver.username)
     |> Map.put(:status, :accepted)
   end
 
-  # Cuando el viaje se completa
+
+  @doc """
+  Marca un viaje como completado.
+  """
   def complete_trip(trip) do
     Map.put(trip, :status, :completed)
   end

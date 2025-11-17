@@ -2,9 +2,9 @@ defmodule Auth do
   alias User
   alias UserStorage
 
-  # ======================================================
-  # ================ REGISTRAR USUSARIO ==================
-  # ======================================================
+  @doc """
+  Registra un nuevo usuario si no existe.
+  """
   def register(username, role, password) when role in [:client, :driver] do
     case UserStorage.find_user(username) do
       nil ->
@@ -23,9 +23,9 @@ defmodule Auth do
     end
   end
 
-  # ======================================================
-  # ======================= LOGIN =========================
-  # ======================================================
+  @doc """
+  Inicia sesión de un usuario si las credenciales son válidas.
+  """
   def login(username, password) do
     case UserStorage.find_user(username) do
       nil ->
@@ -40,16 +40,18 @@ defmodule Auth do
     end
   end
 
-  # ======================================================
-  # =============== PASSWORD MANAGEMENT ==================
-  # ======================================================
+  @doc """
+  Genera el hash SHA-256 de la contraseña.
+  """
   defp hash_password(password) do
     :crypto.hash(:sha256, password)
     |> Base.encode16(case: :lower)
   end
 
+  @doc """
+  Verifica si la contraseña coincide con el hash almacenado.
+  """
   defp verify_password(user, password) do
     hash_password(password) == user.password_hash
   end
-  
 end

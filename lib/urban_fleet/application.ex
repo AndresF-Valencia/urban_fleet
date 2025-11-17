@@ -1,6 +1,9 @@
 defmodule UrbanFleet.Application do
   use Application
 
+  @doc """
+  Inicia la aplicación UrbanFleet y sus procesos supervisados.
+  """
   def start(_type, _args) do
     children = [
       TripRegistry,

@@ -6,10 +6,9 @@ defmodule Handler do
   alias TripManager
   alias LocationManager
 
-  ## ==========================================
-  ## ============  PUBLIC API  =================
-  ## ==========================================
-
+   @doc """
+  Inicia el sistema, arranca el GenServer y ejecuta el ciclo de comandos.
+  """
   def start do
     IO.puts("=== Urban Fleet System ===")
     IO.puts("Escribe 'help' para ver comandos.\n")
@@ -17,20 +16,24 @@ defmodule Handler do
     loop()
   end
 
-  ## CLI principal
+    @doc """
+  Lee comandos del usuario y los envía al GenServer.
+  """
   defp loop do
     input = IO.gets("> ") |> String.trim()
     GenServer.cast(__MODULE__, {:command, input})
     loop()
   end
 
-  ## ==========================================
-  ## ============  GEN SERVER  =================
-  ## ==========================================
-
+    @doc """
+  Inicializa el estado del GenServer.
+  """
   @impl true
   def init(state), do: {:ok, state}
 
+  @doc """
+  Procesa comandos recibidos desde la consola.
+  """
   @impl true
   def handle_cast({:command, input}, state) do
     case parse(input) do
@@ -48,11 +51,11 @@ defmodule Handler do
             {:noreply, %{state | session: user}}
 
           {:error, :not_found} ->
-            IO.puts("❌ Usuario no encontrado.")
+            IO.puts("Usuario no encontrado.")
             {:noreply, state}
 
           {:error, :wrong_password} ->
-            IO.puts("❌ Contraseña incorrecta.")
+            IO.puts("Contraseña incorrecta.")
             {:noreply, state}
         end
 
@@ -68,19 +71,20 @@ defmodule Handler do
 
         {:noreply, state}
 
-      ## ========================= CLIENT =========================
-
+      @doc """
+      Maneja la solicitud de viaje de un cliente.
+      """
       {:ok, {:client_request, origin, dest}} ->
         case state.session do
           %{role: :client, username: _u} ->
             with {:ok, _origin_loc} <- LocationManager.valid_location?(origin),
                  {:ok, _dest_loc} <- LocationManager.valid_location?(dest),
                  {:ok, trip_id, _pid} <- TripManager.request_trip(state.session, origin, dest) do
-              IO.puts("🚗 Viaje creado con ID #{trip_id}")
+              IO.puts("Viaje creado con ID #{trip_id}")
               {:noreply, %{state | active_trip: trip_id}}
             else
               {:error, :invalid_location} ->
-                IO.puts("❌ Ubicación inválida.")
+                IO.puts("Ubicación inválida.")
                 {:noreply, state}
             end
 
@@ -89,6 +93,9 @@ defmodule Handler do
             {:noreply, state}
         end
 
+      @doc """
+      Muestra el estado del viaje activo de un cliente.
+      """
       {:ok, :client_trip_status} ->
         case {state.session, state.active_trip} do
           {nil, _} ->
@@ -115,8 +122,10 @@ defmodule Handler do
             {:noreply, state}
         end
 
-      ## ======================= DRIVER ==========================
 
+      @doc """
+      Muestra los viajes pendientes para el conductor.
+      """
       {:ok, :driver_pending} ->
         if driver?(state) do
           show_pending()
@@ -126,6 +135,9 @@ defmodule Handler do
           {:noreply, state}
         end
 
+      @doc """
+      Permite a un conductor aceptar un viaje.
+      """
       {:ok, {:driver_accept, id}} ->
         if driver?(state) do
           reply(TripManager.accept_trip(id, state.session.username))
@@ -135,6 +147,9 @@ defmodule Handler do
           {:noreply, state}
         end
 
+      @doc """
+      Permite a un conductor completar un viaje.
+      """
       {:ok, {:driver_complete, id}} ->
         if driver?(state) do
           reply(TripManager.complete_trip(id))
@@ -144,7 +159,9 @@ defmodule Handler do
           {:noreply, state}
         end
 
-      ## ========================= OTROS =========================
+      @doc """
+      Maneja comandos desconocidos.
+      """
 
       {:error, :unknown} ->
         IO.puts("Comando no reconocido. Escribe 'help'.")
@@ -152,16 +169,24 @@ defmodule Handler do
     end
   end
 
-  ## ==========================================
-  ## ============  PARSER CLI  =================
-  ## ==========================================
-
+  @doc """
+  Procesa el comando 'help'.
+  """
   defp parse("help"), do: help()
 
+  @doc """
+  Procesa el comando 'logout'.
+  """
   defp parse("logout"), do: {:ok, :logout}
+
+  @doc """
+  Procesa el comando 'whoami'.
+  """
   defp parse("whoami"), do: {:ok, :whoami}
 
-  # Registro
+  @doc """
+  Procesa el comando de registro de usuario.
+  """
   defp parse("register " <> rest) do
     case String.split(rest, " ") do
       [u, role, p] ->
@@ -172,7 +197,9 @@ defmodule Handler do
     end
   end
 
-  # Login
+   @doc """
+  Procesa el comando de login.
+  """
   defp parse("login " <> rest) do
     case String.split(rest, " ") do
       [u, p] -> {:ok, {:login, u, p}}
@@ -180,7 +207,9 @@ defmodule Handler do
     end
   end
 
-  ## CLIENTE
+  @doc """
+  Procesa la solicitud de viaje de un cliente.
+  """
   defp parse("client request_trip " <> rest) do
   case Regex.scan(~r/"([^"]+)"/, rest) do
     [[_, origin], [_, dest]] ->
@@ -191,24 +220,36 @@ defmodule Handler do
   end
 end
 
-
+ @doc """
+  Procesa el comando para ver el estado del viaje del cliente.
+  """
   defp parse("client trip_status"), do: {:ok, :client_trip_status}
 
-  ## DRIVER
+  @doc """
+  Procesa el comando para ver viajes pendientes del conductor.
+  """
   defp parse("driver pending_trips"), do: {:ok, :driver_pending}
 
+  @doc """
+  Procesa el comando para que el conductor acepte un viaje.
+  """
   defp parse("driver accept " <> id),
     do: {:ok, {:driver_accept, String.to_integer(id)}}
 
+  @doc """
+  Procesa el comando para que el conductor complete un viaje.
+  """
   defp parse("driver complete " <> id),
     do: {:ok, {:driver_complete, String.to_integer(id)}}
 
+  @doc """
+  Procesa comandos desconocidos.
+  """
   defp parse(_), do: {:error, :unknown}
 
-  ## ==========================================
-  ## ============ HELP Y UTILIDADES ===========
-  ## ==========================================
-
+  @doc """
+  Muestra los comandos disponibles.
+  """
   defp help do
     IO.puts("""
     === COMANDOS DISPONIBLES ===
@@ -232,14 +273,27 @@ end
     {:ok, :help}
   end
 
+  @doc """
+  Verifica si el usuario actual es conductor.
+  """
   defp driver?(state),
     do: state.session != nil and state.session.role == :driver
 
-  defp no_perm(role),
-    do: IO.puts("❌ Debes ser #{role} para usar este comando.")
+  @doc """
+  Muestra mensaje de falta de permisos.
+  """
 
+  defp no_perm(role),
+    do: IO.puts("Debes ser #{role} para usar este comando.")
+
+  @doc """
+  Imprime una respuesta formateada.
+  """
   defp reply(resp), do: IO.inspect(resp, label: "Respuesta")
 
+  @doc """
+  Muestra los viajes pendientes.
+  """
   defp show_pending do
     IO.puts("=== Viajes Pendientes ===")
     IO.puts("Usa 'driver accept <id>' para aceptar uno.")
