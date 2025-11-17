@@ -9,7 +9,7 @@ defmodule Auth do
     case UserStorage.find_user(username) do
       nil ->
         user = %User{
-          name: username,
+          username: username,
           role: role,
           password_hash: hash_password(password),
           score: 0
@@ -51,11 +51,5 @@ defmodule Auth do
   defp verify_password(user, password) do
     hash_password(password) == user.password_hash
   end
-
-  # ======================================================
-  # ===================== HELPERS ========================
-  # ======================================================
-  defp generate_id do
-    System.unique_integer([:positive])
-  end
+  
 end

@@ -1,9 +1,4 @@
 defmodule TripRegistry do
-  @moduledoc """
-  Registro global de viajes. Permite asociar cada ID único de viaje
-  con el PID del proceso Trip correspondiente.
-  """
-
   use Supervisor
 
   def start_link(_args) do
@@ -13,11 +8,7 @@ defmodule TripRegistry do
   @impl true
   def init(:ok) do
     children = [
-      {
-        Registry,
-        keys: :unique,
-        name: TripRegistry
-      }
+      {Registry, keys: :unique, name: TripRegistry}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

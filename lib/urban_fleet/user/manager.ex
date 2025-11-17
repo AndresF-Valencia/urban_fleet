@@ -3,36 +3,37 @@ defmodule UserManager do
 
   alias Auth
   alias UserStorage
+  alias User
 
   # ===============================
-  #  API PÚBLICA
+  # API PÚBLICA
   # ===============================
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, :ok, opts ++ [name: __MODULE__])
   end
 
-  # LOGIN
+  # Intenta login; si no existe devuelve {:error, :not_found}
   def connect(username, password) do
     GenServer.call(__MODULE__, {:connect, username, password})
   end
 
-  # LOGOUT
+  def register(username, role, password) do
+    GenServer.call(__MODULE__, {:register, username, role, password})
+  end
+
   def disconnect(username) do
     GenServer.call(__MODULE__, {:disconnect, username})
   end
 
-  # OBTENER SCORE DEL USUARIO
   def get_user_score(username) do
     GenServer.call(__MODULE__, {:get_score, username})
   end
 
-  # MODIFICAR SCORE
-  def update_score(username, points) do
-    GenServer.call(__MODULE__, {:update_score, username, points})
+  def update_score(username, delta) do
+    GenServer.call(__MODULE__, {:update_score, username, delta})
   end
 
-  # RANKING POR ROL
   def ranking(role) when role in [:client, :driver] do
     GenServer.call(__MODULE__, {:ranking, role})
   end
@@ -48,41 +49,32 @@ defmodule UserManager do
   # ===============================
   # HANDLERS
   # ===============================
-
   @impl true
   def handle_call({:connect, username, password}, _from, state) do
-    response =
-      case Auth.login(username, password) do
-        {:ok, :logged_in, user} ->
-          {:ok, :logged_in, user}
+    case Auth.login(username, password) do
+      {:ok, :logged_in, user} ->
+        new_state = %{state | connected: MapSet.put(state.connected, user.username)}
+        {:reply, {:ok, :logged_in, user}, new_state}
 
-        {:error, :not_found} ->
-          # Si el usuario no existe: se registra automáticamente
-          IO.puts("Usuario nuevo. Escribe rol (client/driver):")
-          role =
-            IO.gets("> ")
-            |> String.trim()
-            |> String.to_atom()
+      {:error, :not_found} ->
+        # Devolvemos que no existe: el Handler debe pedir el role y llamar register
+        {:reply, {:error, :not_found}, state}
 
-          case Auth.register(username, role, password) do
-            {:ok, :registered, user} ->
-              {:ok, :registered, user}
+      {:error, :wrong_password} = err ->
+        {:reply, err, state}
+    end
+  end
 
-            error ->
-              error
-          end
+  @impl true
+  def handle_call({:register, username, role, password}, _from, state) do
+    case Auth.register(username, role, password) do
+      {:ok, :registered, user} ->
+        new_state = %{state | connected: MapSet.put(state.connected, user.username)}
+        {:reply, {:ok, :registered, user}, new_state}
 
-        error ->
-          error
-      end
-
-    new_state =
-      case response do
-        {:ok, _, user} -> %{state | connected: MapSet.put(state.connected, user.username)}
-        _ -> state
-      end
-
-    {:reply, response, new_state}
+      error ->
+        {:reply, error, state}
+    end
   end
 
   @impl true
@@ -99,13 +91,13 @@ defmodule UserManager do
   end
 
   @impl true
-  def handle_call({:update_score, username, points}, _from, state) do
+  def handle_call({:update_score, username, delta}, _from, state) do
     case UserStorage.find_user(username) do
       nil ->
         {:reply, {:error, :not_found}, state}
 
       user ->
-        updated = %{user | score: user.score + points}
+        updated = %{user | score: user.score + delta}
         UserStorage.save_user(updated)
         {:reply, {:ok, updated.score}, state}
     end

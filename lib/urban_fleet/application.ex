@@ -1,15 +1,15 @@
-children = [
-  {Registry, keys: :unique, name: TripRegistry},
-  TripSupervisor,
-  TripManager
-]
-def start(_type, _args) do
-  children = [
-    TripRegistry,
-    TripSupervisor   # si decides conservarlo
-    # otros procesos...
-  ]
+defmodule UrbanFleet.Application do
+  use Application
 
-  opts = [strategy: :one_for_one, name: MyApp.Supervisor]
-  Supervisor.start_link(children, opts)
+  def start(_type, _args) do
+    children = [
+      TripRegistry,
+      {DynamicSupervisor, name: TripSupervisor, strategy: :one_for_one},
+      TripManager,
+      UserManager
+    ]
+
+    opts = [strategy: :one_for_one, name: UrbanFleet.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
 end

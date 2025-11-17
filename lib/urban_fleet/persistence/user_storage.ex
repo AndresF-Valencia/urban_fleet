@@ -7,6 +7,8 @@ defmodule UserStorage do
   # Cargar todos los usuarios
   # ===============================
   def load_users do
+    ensure_data_dir()
+
     case File.read(@ruta) do
       {:ok, content} ->
         content
@@ -15,22 +17,20 @@ defmodule UserStorage do
         |> Enum.reject(&is_nil/1)
 
       {:error, :enoent} ->
-        File.mkdir_p!("data")
-        File.write!(@ruta, "")
-        []
+        [] # ensure_data_dir ya creó el archivo
     end
   end
 
   # ===============================
   # Buscar usuario por username
   # ===============================
-  def find_user(username) do
+  def find_user(username) when is_binary(username) do
     load_users()
     |> Enum.find(&(&1.username == username))
   end
 
   # ===============================
-  # Guardar o actualizar un usuario
+  # Guardar o actualizar un usuario (solo un user)
   # ===============================
   def save_user(%User{} = user) do
     users =
@@ -39,8 +39,21 @@ defmodule UserStorage do
 
     new_list = users ++ [user]
 
-    File.write!(@ruta, Enum.map_join(new_list, "\n", &format_line/1) <> "\n")
+    save_users(new_list)
+  end
 
+  # ===============================
+  # Guardar lista completa (sobrescribe)
+  # ===============================
+  def save_users(users) when is_list(users) do
+    ensure_data_dir()
+
+    content =
+      users
+      |> Enum.map(&format_line/1)
+      |> Enum.join("\n")
+
+    File.write!(@ruta, content <> "\n")
     :ok
   end
 
@@ -48,8 +61,8 @@ defmodule UserStorage do
   # FORMATO DEL ARCHIVO
   # ===============================
 
-  # id|username|role|password_hash|score
-  defp format_line(%User{ name: username, role: role, password_hash: hash, score: score}) do
+  # username|role|password_hash|score
+  defp format_line(%User{username: username, role: role, password_hash: hash, score: score}) do
     "#{username}|#{role}|#{hash}|#{score}"
   end
 
@@ -57,7 +70,7 @@ defmodule UserStorage do
     case String.split(line, "|") do
       [username, role, hash, score] ->
         %User{
-          name: username,
+          username: username,
           role: String.to_atom(role),
           password_hash: hash,
           score: String.to_integer(score)
@@ -66,5 +79,10 @@ defmodule UserStorage do
       _ ->
         nil
     end
+  end
+
+  defp ensure_data_dir do
+    File.mkdir_p!("data")
+    if not File.exists?(@ruta), do: File.write!(@ruta, "")
   end
 end

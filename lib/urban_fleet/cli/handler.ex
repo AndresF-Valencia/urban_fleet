@@ -44,8 +44,12 @@ defmodule Handler do
             IO.puts("Bienvenido #{user.username} (#{user.role})")
             {:noreply, %{state | session: user}}
 
-          err ->
-            reply(err)
+          {:error, :not_found} ->
+            IO.puts("❌ Usuario no encontrado.")
+            {:noreply, state}
+
+          {:error, :wrong_password} ->
+            IO.puts("❌ Contraseña incorrecta.")
             {:noreply, state}
         end
 
@@ -58,6 +62,7 @@ defmodule Handler do
           nil -> IO.puts("No has iniciado sesión.")
           user -> IO.puts("Usuario: #{user.username} (#{user.role})")
         end
+
         {:noreply, state}
 
       ## ========================= CLIENT =========================
@@ -65,12 +70,10 @@ defmodule Handler do
       {:ok, {:client_request, origin, dest}} ->
         case state.session do
           %{role: :client, username: u} ->
-            with {:ok, _, _} <- LocationManager.valid_location?(origin),
-                 {:ok, _, _} <- LocationManager.valid_location?(dest),
-                 {:ok, trip_id, pid} <- TripManager.request_trip(u, origin, dest)
-            do
+            with {:ok, _origin_loc} <- LocationManager.valid_location?(origin),
+                 {:ok, _dest_loc} <- LocationManager.valid_location?(dest),
+                 {:ok, trip_id, _pid} <- TripManager.request_trip(u, origin, dest) do
               IO.puts("🚗 Viaje creado con ID #{trip_id}")
-
               {:noreply, %{state | active_trip: trip_id}}
             else
               {:error, :invalid_location} ->
@@ -78,7 +81,9 @@ defmodule Handler do
                 {:noreply, state}
             end
 
-          _ -> no_perm(:client); {:noreply, state}
+          _ ->
+            no_perm(:client)
+            {:noreply, state}
         end
 
       {:ok, :client_trip_status} ->
@@ -102,7 +107,9 @@ defmodule Handler do
                 {:noreply, state}
             end
 
-          _ -> no_perm(:client); {:noreply, state}
+          _ ->
+            no_perm(:client)
+            {:noreply, state}
         end
 
       ## ======================= DRIVER ==========================
@@ -112,7 +119,8 @@ defmodule Handler do
           show_pending()
           {:noreply, state}
         else
-          no_perm(:driver); {:noreply, state}
+          no_perm(:driver)
+          {:noreply, state}
         end
 
       {:ok, {:driver_accept, id}} ->
@@ -120,7 +128,8 @@ defmodule Handler do
           reply(TripManager.accept_trip(id, state.session.username))
           {:noreply, state}
         else
-          no_perm(:driver); {:noreply, state}
+          no_perm(:driver)
+          {:noreply, state}
         end
 
       {:ok, {:driver_complete, id}} ->
@@ -128,7 +137,8 @@ defmodule Handler do
           reply(TripManager.complete_trip(id))
           {:noreply, state}
         else
-          no_perm(:driver); {:noreply, state}
+          no_perm(:driver)
+          {:noreply, state}
         end
 
       ## ========================= OTROS =========================
@@ -153,7 +163,9 @@ defmodule Handler do
     case String.split(rest, " ") do
       [u, role, p] ->
         {:ok, {:register, u, String.to_atom(role), p}}
-      _ -> {:error, :unknown}
+
+      _ ->
+        {:error, :unknown}
     end
   end
 
@@ -209,6 +221,7 @@ defmodule Handler do
     driver accept <trip_id>
     driver complete <trip_id>
     """)
+
     {:ok, :help}
   end
 

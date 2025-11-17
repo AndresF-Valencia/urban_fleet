@@ -1,12 +1,8 @@
 defmodule User do
-  @moduledoc """
-  Representa a un usuario del sistema.
-  """
+  @moduledoc "Estructura de usuario persistida en users.dat"
 
-  defstruct [
-    :name,        # Identificador único
-    :role,            # :client o :driver
-    :password_hash,   # Hash SHA256
-    score: 0          # Puntuación inicial
-  ]
+  defstruct username: nil,
+            role: nil,
+            password_hash: nil,
+            score: 0
 end
