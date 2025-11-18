@@ -40,17 +40,13 @@ defmodule Auth do
     end
   end
 
-  @doc """
-  Genera el hash SHA-256 de la contraseña.
-  """
+
   defp hash_password(password) do
     :crypto.hash(:sha256, password)
     |> Base.encode16(case: :lower)
   end
 
-  @doc """
-  Verifica si la contraseña coincide con el hash almacenado.
-  """
+  
   defp verify_password(user, password) do
     hash_password(password) == user.password_hash
   end

@@ -81,9 +81,7 @@ defmodule UserManager do
     end
   end
 
-  @doc """
-  Registra un usuario y lo conecta automáticamente.
-  """
+
   @impl true
   def handle_call({:register, username, role, password}, _from, state) do
     case Auth.register(username, role, password) do
@@ -96,17 +94,13 @@ defmodule UserManager do
     end
   end
 
-  @doc """
-  Desconecta un usuario del servidor.
-  """
+
   @impl true
   def handle_call({:disconnect, username}, _from, state) do
     {:reply, :ok, %{state | connected: MapSet.delete(state.connected, username)}}
   end
 
-  @doc """
-  Obtiene el puntaje de un usuario.
-  """
+
   @impl true
   def handle_call({:get_score, username}, _from, state) do
     case UserStorage.find_user(username) do
@@ -115,9 +109,7 @@ defmodule UserManager do
     end
   end
 
-  @doc """
-  Actualiza el puntaje de un usuario.
-  """
+
   @impl true
   def handle_call({:update_score, username, delta}, _from, state) do
     case UserStorage.find_user(username) do
@@ -131,9 +123,7 @@ defmodule UserManager do
     end
   end
 
-  @doc """
-  Devuelve el ranking de usuarios filtrado por rol.
-  """
+
   @impl true
   def handle_call({:ranking, role}, _from, state) do
     ranking =

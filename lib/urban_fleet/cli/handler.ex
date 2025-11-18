@@ -6,7 +6,7 @@ defmodule Handler do
   alias TripManager
   alias LocationManager
 
-   @doc """
+  @doc """
   Inicia el sistema, arranca el GenServer y ejecuta el ciclo de comandos.
   """
   def start do
@@ -16,16 +16,13 @@ defmodule Handler do
     loop()
   end
 
-    @doc """
-  Lee comandos del usuario y los envía al GenServer.
-  """
   defp loop do
     input = IO.gets("> ") |> String.trim()
     GenServer.cast(__MODULE__, {:command, input})
     loop()
   end
 
-    @doc """
+  @doc """
   Inicializa el estado del GenServer.
   """
   @impl true
@@ -33,6 +30,12 @@ defmodule Handler do
 
   @doc """
   Procesa comandos recibidos desde la consola.
+  Maneja la solicitud de viaje de un cliente.
+  Muestra el estado del viaje activo de un cliente.
+  Muestra los viajes pendientes para el conductor.
+  Permite a un conductor aceptar un viaje.
+  Permite a un conductor completar un viaje.
+  Maneja comandos desconocidos.
   """
   @impl true
   def handle_cast({:command, input}, state) do
@@ -71,9 +74,6 @@ defmodule Handler do
 
         {:noreply, state}
 
-      @doc """
-      Maneja la solicitud de viaje de un cliente.
-      """
       {:ok, {:client_request, origin, dest}} ->
         case state.session do
           %{role: :client, username: _u} ->
@@ -93,9 +93,6 @@ defmodule Handler do
             {:noreply, state}
         end
 
-      @doc """
-      Muestra el estado del viaje activo de un cliente.
-      """
       {:ok, :client_trip_status} ->
         case {state.session, state.active_trip} do
           {nil, _} ->
@@ -122,10 +119,6 @@ defmodule Handler do
             {:noreply, state}
         end
 
-
-      @doc """
-      Muestra los viajes pendientes para el conductor.
-      """
       {:ok, :driver_pending} ->
         if driver?(state) do
           show_pending()
@@ -135,21 +128,15 @@ defmodule Handler do
           {:noreply, state}
         end
 
-      @doc """
-      Permite a un conductor aceptar un viaje.
-      """
       {:ok, {:driver_accept, id}} ->
         if driver?(state) do
-          reply(TripManager.accept_trip(id, state.session.username))
+          reply(TripManager.accept_trip(id, state.session))
           {:noreply, state}
         else
           no_perm(:driver)
           {:noreply, state}
         end
 
-      @doc """
-      Permite a un conductor completar un viaje.
-      """
       {:ok, {:driver_complete, id}} ->
         if driver?(state) do
           reply(TripManager.complete_trip(id))
@@ -159,9 +146,63 @@ defmodule Handler do
           {:noreply, state}
         end
 
-      @doc """
-      Maneja comandos desconocidos.
-      """
+      {:ok, :score} ->
+        case state.session do
+          nil ->
+            IO.puts("Debes iniciar sesión.")
+            {:noreply, state}
+
+          %User{} = user ->
+            case UserManager.get_user_score(user.username) do
+              {:ok, score} -> IO.puts("Tu puntaje actual es: #{score}")
+              {:error, :not_found} -> IO.puts("Usuario no encontrado.")
+            end
+
+            {:noreply, state}
+        end
+
+      {:ok, :my_trips} ->
+        case state.session do
+          nil ->
+            IO.puts("Debes iniciar sesión.")
+            {:noreply, state}
+
+          %User{role: :client, username: u} ->
+            trips = TripManager.list_user_trips(u)
+            IO.puts("=== Tus viajes como cliente ===")
+
+            Enum.each(trips, fn t ->
+              IO.puts(
+                "ID: #{t.id}, Estado: #{t.status}, Origen: #{t.origin}, Destino: #{t.destination}"
+              )
+            end)
+
+            {:noreply, state}
+
+          %User{role: :driver, username: u} ->
+            trips = TripManager.list_driver_trips(u)
+            IO.puts("=== Tus viajes como conductor ===")
+
+            Enum.each(trips, fn t ->
+              IO.puts(
+                "ID: #{t.id}, Estado: #{t.status}, Cliente: #{t.client.username}, Origen: #{t.origin}, Destino: #{t.destination}"
+              )
+            end)
+
+            {:noreply, state}
+        end
+
+      {:ok, {:ranking, role}} ->
+        ranking = UserManager.ranking(role)
+
+        IO.puts("=== Ranking de #{role}s ===")
+
+        Enum.with_index(ranking, 1)
+        |> Enum.each(fn {user, idx} ->
+          IO.puts("#{idx}. #{user.username} - Puntaje: #{user.score}")
+        end)
+
+        {:noreply, state}
 
       {:error, :unknown} ->
         IO.puts("Comando no reconocido. Escribe 'help'.")
@@ -169,24 +210,12 @@ defmodule Handler do
     end
   end
 
-  @doc """
-  Procesa el comando 'help'.
-  """
   defp parse("help"), do: help()
 
-  @doc """
-  Procesa el comando 'logout'.
-  """
   defp parse("logout"), do: {:ok, :logout}
 
-  @doc """
-  Procesa el comando 'whoami'.
-  """
   defp parse("whoami"), do: {:ok, :whoami}
 
-  @doc """
-  Procesa el comando de registro de usuario.
-  """
   defp parse("register " <> rest) do
     case String.split(rest, " ") do
       [u, role, p] ->
@@ -197,9 +226,6 @@ defmodule Handler do
     end
   end
 
-   @doc """
-  Procesa el comando de login.
-  """
   defp parse("login " <> rest) do
     case String.split(rest, " ") do
       [u, p] -> {:ok, {:login, u, p}}
@@ -207,49 +233,36 @@ defmodule Handler do
     end
   end
 
-  @doc """
-  Procesa la solicitud de viaje de un cliente.
-  """
   defp parse("client request_trip " <> rest) do
-  case Regex.scan(~r/"([^"]+)"/, rest) do
-    [[_, origin], [_, dest]] ->
-      {:ok, {:client_request, origin, dest}}
+    case Regex.scan(~r/"([^"]+)"/, rest) do
+      [[_, origin], [_, dest]] ->
+        {:ok, {:client_request, origin, dest}}
 
-    _ ->
-      {:error, :unknown}
+      _ ->
+        {:error, :unknown}
+    end
   end
-end
 
- @doc """
-  Procesa el comando para ver el estado del viaje del cliente.
-  """
   defp parse("client trip_status"), do: {:ok, :client_trip_status}
 
-  @doc """
-  Procesa el comando para ver viajes pendientes del conductor.
-  """
   defp parse("driver pending_trips"), do: {:ok, :driver_pending}
 
-  @doc """
-  Procesa el comando para que el conductor acepte un viaje.
-  """
   defp parse("driver accept " <> id),
     do: {:ok, {:driver_accept, String.to_integer(id)}}
 
-  @doc """
-  Procesa el comando para que el conductor complete un viaje.
-  """
   defp parse("driver complete " <> id),
     do: {:ok, {:driver_complete, String.to_integer(id)}}
 
-  @doc """
-  Procesa comandos desconocidos.
-  """
+  defp parse("score"), do: {:ok, :score}
+
+  defp parse("my_trips"), do: {:ok, :my_trips}
+
+  defp parse("ranking client"), do: {:ok, {:ranking, :client}}
+
+  defp parse("ranking driver"), do: {:ok, {:ranking, :driver}}
+
   defp parse(_), do: {:error, :unknown}
 
-  @doc """
-  Muestra los comandos disponibles.
-  """
   defp help do
     IO.puts("""
     === COMANDOS DISPONIBLES ===
@@ -259,43 +272,44 @@ end
     login <username> <password>
     logout
     whoami
+    score
+    my_trips
 
     >> CLIENTE
     client request_trip <origin> <dest>
     client trip_status
+    ranking client
 
     >> DRIVER
     driver pending_trips
     driver accept <trip_id>
     driver complete <trip_id>
+    ranking driver
     """)
 
     {:ok, :help}
   end
 
-  @doc """
-  Verifica si el usuario actual es conductor.
-  """
   defp driver?(state),
     do: state.session != nil and state.session.role == :driver
-
-  @doc """
-  Muestra mensaje de falta de permisos.
-  """
 
   defp no_perm(role),
     do: IO.puts("Debes ser #{role} para usar este comando.")
 
-  @doc """
-  Imprime una respuesta formateada.
-  """
   defp reply(resp), do: IO.inspect(resp, label: "Respuesta")
 
-  @doc """
-  Muestra los viajes pendientes.
-  """
   defp show_pending do
     IO.puts("=== Viajes Pendientes ===")
+    pending = TripManager.list_pending()
+
+    if pending == [] do
+      IO.puts("No hay viajes pendientes.")
+    else
+      Enum.each(pending, fn trip ->
+        IO.puts("ID: #{trip.id}, Origen: #{trip.origin}, Destino: #{trip.destination}")
+      end)
+    end
+
     IO.puts("Usa 'driver accept <id>' para aceptar uno.")
   end
 end

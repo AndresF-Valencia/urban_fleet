@@ -7,19 +7,20 @@ defmodule UserStorage do
   Carga los usuarios almacenados.
   """
   def load_users do
-    ensure_data_dir()
+  ensure_data_dir()
 
-    case File.read(@ruta) do
-      {:ok, content} ->
-        content
-        |> String.split("\n", trim: true)
-        |> Enum.map(&parse_line/1)
-        |> Enum.reject(&is_nil/1)
+  case File.read(@ruta) do
+    {:ok, content} ->
+      content
+      |> String.split("\n", trim: true)
+      |> Enum.map(&(&1 |> String.trim() |> parse_line()))
+      |> Enum.reject(&is_nil/1)
 
-      {:error, :enoent} ->
-        [] # ensure_data_dir ya creó el archivo
-    end
+    {:error, :enoent} ->
+      [] # ensure_data_dir ya creó el archivo
   end
+end
+
 
   @doc """
   Busca un usuario por nombre.
@@ -57,16 +58,12 @@ defmodule UserStorage do
     :ok
   end
 
-  @doc """
-  Formatea un usuario para guardarlo en archivo.
-  """
+
   defp format_line(%User{username: username, role: role, password_hash: hash, score: score}) do
     "#{username}|#{role}|#{hash}|#{score}"
   end
 
-  @doc """
-  Convierte una línea del archivo en un struct User.
-  """
+
   defp parse_line(line) do
     case String.split(line, "|") do
       [username, role, hash, score] ->
@@ -81,10 +78,7 @@ defmodule UserStorage do
         nil
     end
   end
-  
-  @doc """
-  Asegura que el directorio y archivo de datos existan.
-  """
+
   defp ensure_data_dir do
     File.mkdir_p!("data")
     if not File.exists?(@ruta), do: File.write!(@ruta, "")

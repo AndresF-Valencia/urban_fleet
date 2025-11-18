@@ -30,26 +30,29 @@ defmodule Trip do
   Inicializa el estado del viaje y programa su expiración.
   """
   def init({%User{} = client, origin, dest}) do
-    # 20 segundos para expirar si no hay conductor
-    Process.send_after(self(), :expire, 20_000)
+  trip_id = System.unique_integer([:positive])
+  Process.send_after(self(), :expire, 20_000)
 
-    trip_id = System.unique_integer([:positive])
+  state = %{
+    id: trip_id,
+    client: client,
+    driver: nil,
+    origin: origin,
+    destination: dest,
+    status: :waiting,
+    inserted_at: DateTime.utc_now(),
+    accepted_at: nil,
+    completed_at: nil
+  }
 
-    state = %{
-      id: trip_id,
-      client: client,
-      driver: nil,
-      origin: origin,
-      destination: dest,
-      status: :waiting,
-      inserted_at: DateTime.utc_now()
-    }
-
-    # Registrarse en el Registry con la clave trip_id
+  {:ok, _pid} =
     Registry.register(:trip_registry, trip_id, nil)
 
-    {:ok, state}
-  end
+
+
+  {:ok, state}
+end
+
 
   @doc """
   Acepta el viaje si está disponible.
@@ -59,27 +62,21 @@ defmodule Trip do
     {:reply, {:ok, :accepted}, new_state}
   end
 
-  @doc """
-  Retorna error si el viaje ya fue aceptado.
-  """
+
   def handle_call({:accept, _}, _from, state) do
     {:reply, {:error, :already_taken}, state}
   end
 
-  @doc """
-  Devuelve el estado actual del viaje.
-  """
+
   def handle_call(:get_state, _from, state), do: {:reply, state, state}
 
   @doc """
   Completa el viaje y actualiza puntajes y registro.
   """
   def handle_cast(:complete, %{client: c, driver: d, status: :accepted} = s) do
-    # Delegar el update de puntajes al UserManager
     UserManager.update_score(c.username, 10)
     UserManager.update_score(d.username, 15)
 
-    # Loggear el resultado
     ResultLogger.log_trip(%{
       fecha: DateTime.utc_now() |> DateTime.to_iso8601(),
       cliente: c.username,
@@ -89,7 +86,7 @@ defmodule Trip do
       estado: "Completado"
     })
 
-    {:stop, :normal, %{s | status: :completed, completed_at: DateTime.utc_now()}}
+    {:noreply, %{s | status: :completed, completed_at: DateTime.utc_now()}}
   end
 
   @doc """
@@ -110,9 +107,7 @@ defmodule Trip do
     {:stop, :normal, %{s | status: :expired}}
   end
 
-  @doc """
-  Ignora la expiración si el viaje ya cambió de estado.
-  """
+
   def handle_info(:expire, s), do: {:noreply, s}
 
   @doc """

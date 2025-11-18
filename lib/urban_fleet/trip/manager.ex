@@ -68,7 +68,7 @@ defmodule TripManager do
     end
   end
 
-  @doc"""
+  @doc """
   Retorna solo los viajes en estado :waiting.
   """
   def list_pending do
@@ -76,6 +76,24 @@ defmodule TripManager do
     |> Enum.map(&get_trip_state/1)
     |> Enum.filter(fn
       %{status: :waiting} -> true
+      _ -> false
+    end)
+  end
+
+  def list_user_trips(username) do
+    Registry.select(:trip_registry, [{{:"$1", :_, :_}, [], [:"$1"]}])
+    |> Enum.map(&get_trip_state/1)
+    |> Enum.filter(fn
+      %{client: %User{username: ^username}} -> true
+      _ -> false
+    end)
+  end
+
+  def list_driver_trips(username) do
+    Registry.select(:trip_registry, [{{:"$1", :_, :_}, [], [:"$1"]}])
+    |> Enum.map(&get_trip_state/1)
+    |> Enum.filter(fn
+      %{driver: %User{username: ^username}} -> true
       _ -> false
     end)
   end
