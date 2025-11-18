@@ -30,29 +30,27 @@ defmodule Trip do
   Inicializa el estado del viaje y programa su expiración.
   """
   def init({%User{} = client, origin, dest}) do
-  trip_id = System.unique_integer([:positive])
-  Process.send_after(self(), :expire, 20_000)
+    trip_id = System.unique_integer([:positive])
+    Process.send_after(self(), :expire, 20_000)
 
-  state = %{
-    id: trip_id,
-    client: client,
-    driver: nil,
-    origin: origin,
-    destination: dest,
-    status: :waiting,
-    inserted_at: DateTime.utc_now(),
-    accepted_at: nil,
-    completed_at: nil
-  }
+    state = %{
+      id: trip_id,
+      client: client,
+      driver: nil,
+      origin: origin,
+      destination: dest,
+      status: :waiting,
+      inserted_at: DateTime.utc_now(),
+      accepted_at: nil,
+      completed_at: nil,
+      logged: false
+    }
 
-  {:ok, _pid} =
-    Registry.register(:trip_registry, trip_id, nil)
+    {:ok, _pid} =
+      Registry.register(:trip_registry, trip_id, nil)
 
-
-
-  {:ok, state}
-end
-
+    {:ok, state}
+  end
 
   @doc """
   Acepta el viaje si está disponible.
@@ -62,18 +60,16 @@ end
     {:reply, {:ok, :accepted}, new_state}
   end
 
-
   def handle_call({:accept, _}, _from, state) do
     {:reply, {:error, :already_taken}, state}
   end
-
 
   def handle_call(:get_state, _from, state), do: {:reply, state, state}
 
   @doc """
   Completa el viaje y actualiza puntajes y registro.
   """
-  def handle_cast(:complete, %{client: c, driver: d, status: :accepted} = s) do
+  def handle_cast(:complete, %{client: c, driver: d, status: :accepted, logged: false} = s) do
     UserManager.update_score(c.username, 10)
     UserManager.update_score(d.username, 15)
 
@@ -86,29 +82,33 @@ end
       estado: "Completado"
     })
 
-    {:noreply, %{s | status: :completed, completed_at: DateTime.utc_now()}}
+    {:noreply, %{s | status: :completed, completed_at: DateTime.utc_now(), logged: true}}
+  end
+
+  def handle_cast(:complete, %{logged: true} = s) do
+    {:noreply, s}
   end
 
   @doc """
   Expira el viaje si sigue en espera.
   """
-  def handle_info(:expire, %{status: :waiting, client: c} = s) do
-    UserManager.update_score(c.username, -5)
-
+  def handle_info(:expire, %{status: :waiting, logged: false} = s) do
+    UserManager.update_score(s.client.username, -5) 
     ResultLogger.log_trip(%{
       fecha: DateTime.utc_now() |> DateTime.to_iso8601(),
-      cliente: c.username,
+      cliente: s.client.username,
       conductor: "N/A",
       origen: s.origin,
       destino: s.destination,
       estado: "Expirado"
     })
 
-    {:stop, :normal, %{s | status: :expired}}
+    {:noreply, %{s | status: :expired, logged: true}}
   end
 
-
-  def handle_info(:expire, s), do: {:noreply, s}
+  def handle_info(:expire, %{status: status} = s) when status in [:accepted, :completed, :expired] do
+  {:noreply, s}
+end
 
   @doc """
   Operación de cierre del GenServer.
